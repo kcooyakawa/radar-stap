@@ -1,0 +1,54 @@
+name: Radar Stap
+
+on:
+  schedule:
+    # 10:00 UTC = 7h em Brasília, segunda a sexta
+    - cron: "0 10 * * 1-5"
+  workflow_dispatch:   # botão "Run workflow" para rodar na hora
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40   # trava de segurança
+    env:
+      RADAR_SENHA: ${{ secrets.RADAR_SENHA }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependências
+        run: pip install -r requirements.txt
+
+      - name: Conferir senha
+        run: |
+          if [ -z "$RADAR_SENHA" ]; then
+            echo "::error::Crie o secret RADAR_SENHA em Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: Abrir banco
+        run: python cofre.py abrir
+
+      - name: Rodar radar
+        run: python radar.py
+
+      - name: Fechar banco
+        run: python cofre.py fechar
+
+      - name: Salvar (só arquivos cifrados)
+        run: |
+          git config user.name "radar-stap"
+          git config user.email "radar-stap@users.noreply.github.com"
+          git add radar.db.enc docs/data.enc.json
+          git diff --cached --quiet || git commit -m "Radar $(date +'%Y-%m-%d')"
+          git push
